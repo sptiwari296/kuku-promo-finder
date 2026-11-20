@@ -54,6 +54,12 @@ with st.sidebar:
                         help="Leave empty if the key is already in the server's .env file.")
     stitched = st.checkbox("Allow stitched promos (two moments joined)", True, key="stitched")
 
+if not any(os.environ.get(k) for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY",
+                                        "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")):
+    st.info("This server has no API key stored. Paste your own Groq or Gemini key in the sidebar "
+            "(free at console.groq.com or aistudio.google.com), or choose **Keyword baseline** as both "
+            "models to try it with no key.")
+
 uploads = st.file_uploader("Episode screenplays (.txt files or one .zip)", type=["txt", "zip"],
                            accept_multiple_files=True, key="uploads")
 local = st.text_input("…or a folder path on this machine", "", key="local_path")

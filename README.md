@@ -5,6 +5,8 @@ For each clip it gives the episode, the exact start and end of every segment, th
 the cliffhanger and one line on why it works, plus a short plan of which to post first and why.
 An editor approves the final picks.
 
+**Live app:** https://kuku-promo-finder-sp.streamlit.app (no keys stored: paste your own Groq/Gemini key in the sidebar, or pick "Keyword baseline").
+
 ## Run it
 
 ```
