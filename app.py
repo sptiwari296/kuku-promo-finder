@@ -15,7 +15,7 @@ from promo_finder import export as ex
 from promo_finder import review as rv
 from promo_finder.llm import load_env
 from promo_finder.parse import load_texts
-from promo_finder.pipeline import Config, run
+from promo_finder.pipeline import Config, fast, run
 
 load_env()
 st.set_page_config(page_title="Promo Finder", layout="wide")
@@ -55,6 +55,9 @@ with st.sidebar:
     key = st.text_input("API key (not stored)", type="password", key="api_key",
                         help="Leave empty if the key is already in the server's .env file.")
     stitched = st.checkbox("Allow stitched promos (two moments joined)", True, key="stitched")
+    fast_mode = st.checkbox("Fast mode (for demos)", False, key="fast_mode",
+                            help="20-clip shortlist, first judge only, one judging pass, 4 parallel calls. "
+                                 "A new 10-episode show takes ~20s on free Gemini Flash-Lite.")
 
 if not any(os.environ.get(k) for k in ("GROQ_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY",
                                         "ANTHROPIC_API_KEY", "OPENROUTER_API_KEY")):
@@ -92,6 +95,8 @@ if st.button("Find promos", type="primary", disabled=not episodes, key="go"):
         keys[judge_spec.split(":")[0]] = key
     cfg = Config(tag_model=tag_spec, judge_model=judge_spec, pool_size=pool, allow_stitched=stitched,
                  api_keys=keys or None)
+    if fast_mode:
+        cfg = fast(cfg)
     log_box = st.empty()
     lines: list[str] = []
 

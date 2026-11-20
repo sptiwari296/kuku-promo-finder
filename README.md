@@ -89,6 +89,42 @@ All AI calls go through [promo_finder/llm.py](promo_finder/llm.py).
 
 `compare_judges.py` compares two separate runs judged by different models (used for the first experiment).
 
+## Fast mode (for live demos)
+
+`python run.py --input <folder> --fast` (or tick **Fast mode** in the app): 20-clip shortlist, first judge only,
+one judging pass, 4 parallel AI calls. Measured with every call live on free Gemini 3.1 Flash-Lite:
+a new **10-episode show in 20 seconds**, all **50 episodes in 4.5 minutes** (free-tier rate limits, retried
+automatically, 0 failed episodes). Use full mode for real decisions; fast mode skips the second judge and the
+self-consistency pass.
+
+## Experiments ([experiments/](experiments/))
+
+**Does it rely on the word "cliffhanger"?** ([no_hint_test.py](experiments/no_hint_test.py)) 14 script notes
+literally say "cliffhanger", always at an episode's end. Removing the word and re-running those 14 episodes:
+
+| | With the word | Without |
+|---|---|---|
+| Tagger marks that ending as a cliffhanger | 13/14 | 8/14 |
+| Episode's best cliffhanger is at its end | 9/14 | 4/14 |
+| Top-10 promos that stayed the same | | 7/10 |
+| Judges' cliffhanger score, top 10 | 8.0 | 7.7 |
+
+The tagger does lean on the label; the final promos barely change because the judges read the whole clip.
+Control: only ~35% of hook moments repeat between runs anyway, so part of this is normal AI variation.
+Next fix: a code rule that always treats each episode's last beat as a cliffhanger.
+
+**What does the AI add over keyword rules?** ([ai_vs_baseline.py](experiments/ai_vs_baseline.py)) Top 10 of each,
+mixed and blind-scored by a model that took no part in ranking (Qwen `qwen3.8-27b`):
+
+| | AI tool | Keyword rules |
+|---|---|---|
+| Blind score (overall / hook / cliffhanger / stands alone) | **7.8** / 8.3 / 8.1 / 7.3 | 6.9 / 6.8 / 6.9 / 7.1 |
+| Clips in the judge's top half | 9/10 | 1/10 |
+| Joined clips in top 10 / mean start episode | 4 / 21 | 8 / 12 |
+
+The AI's edge is hooks and cliffhangers, not "makes sense alone". A first version used Gemini 3.5 Flash as the
+blind judge, but Gemini helped rank the AI list, so that result (7.2 vs 6.0) was circular and was re-run.
+
 ## Check quality against your own picks
 
 Fill `human_picks.csv` (episode,start,end) **before** looking at the output, then:

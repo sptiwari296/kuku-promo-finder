@@ -20,6 +20,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -92,6 +93,7 @@ class LLM:
             if prov not in OPENAI_COMPATIBLE and prov not in ("anthropic", "heuristic"):
                 raise LLMError(f"Unknown provider '{prov}'")
         self.stats["used"] = {}
+        self._lock = threading.Lock()   # several threads may share one model
         self._activate(0)
         self.cache_dir = Path(self.cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -123,14 +125,18 @@ class LLM:
 
         errors = []
         while True:
+            failed = self.active_spec
             try:
                 return self._json_one(system, user, temperature, tag)
             except (LLMError, FatalLLMError) as e:
-                errors.append(f"{self.active_spec}: {e}")
-                if self.active + 1 >= len(self.specs):
-                    raise LLMError(" | ".join(errors)[:1500])
-                self._activate(self.active + 1)
-                print(f"  ! switching to fallback model {self.active_spec}")
+                errors.append(f"{failed}: {e}")
+                with self._lock:
+                    if self.active_spec != failed:          # another thread already switched
+                        continue
+                    if self.active + 1 >= len(self.specs):
+                        raise LLMError(" | ".join(errors)[:1500])
+                    self._activate(self.active + 1)
+                    print(f"  ! switching to fallback model {self.active_spec}")
 
     def _json_one(self, system: str, user: str, temperature: float, tag: str) -> dict:
         cpath = self._cache_path(self.active_spec, system, user, temperature, tag)
@@ -140,11 +146,12 @@ class LLM:
             try:
                 raw, usage = self._call(system, user, temperature)
                 parsed = extract_json(raw)
-                self.stats["calls"] += 1
-                self.stats["used"][self.active_spec] = self.stats["used"].get(self.active_spec, 0) + 1
-                self.stats["seconds"] += time.time() - t0
-                self.stats["in_tokens"] += usage.get("in", 0)
-                self.stats["out_tokens"] += usage.get("out", 0)
+                with self._lock:
+                    self.stats["calls"] += 1
+                    self.stats["used"][self.active_spec] = self.stats["used"].get(self.active_spec, 0) + 1
+                    self.stats["seconds"] += time.time() - t0
+                    self.stats["in_tokens"] += usage.get("in", 0)
+                    self.stats["out_tokens"] += usage.get("out", 0)
                 cpath.write_text(json.dumps({"spec": self.active_spec, "tag": tag, "raw": raw, "parsed": parsed,
                                              "usage": usage}, ensure_ascii=False, indent=1), encoding="utf-8")
                 return parsed

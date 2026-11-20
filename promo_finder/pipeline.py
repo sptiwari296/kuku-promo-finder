@@ -27,6 +27,7 @@ class Config:
     judge_runs: int = 2
     allow_stitched: bool = True
     variants_for_top: int = 10          # how many top promos get alternative hooks
+    workers: int = 1                    # parallel AI calls (raise on paid APIs)
     cache_dir: str = "cache"
     api_keys: dict | None = None        # optional {provider: key} from the web app
 
@@ -65,6 +66,18 @@ def check_promos(promos: list[dict], episodes: list[Episode]) -> dict:
             "problems": problems}
 
 
+FAST = {"pool_size": 20, "judge_runs": 1, "workers": 4, "variants_for_top": 5}
+
+
+def fast(cfg: Config) -> Config:
+    """Demo mode: 20-clip shortlist, one judge, one judging pass, 4 parallel calls.
+    Trades the self-consistency check for speed; use the full mode for real decisions."""
+    for k, v in FAST.items():
+        setattr(cfg, k, v)
+    cfg.judge_model = cfg.judge_model.split(";")[0]
+    return cfg
+
+
 def run(episodes: list[Episode], cfg: Config, log=print) -> dict:
     t0 = time.time()
     tag_llm = _make_llm(cfg.tag_model, cfg)
@@ -73,7 +86,8 @@ def run(episodes: list[Episode], cfg: Config, log=print) -> dict:
     log(f"Parsed {len(episodes)} episodes, {sum(len(e.blocks) for e in episodes)} blocks")
 
     log(f"Stage 2: tagging with {cfg.tag_model}")
-    moments, ep_info, tag_stats = tag_mod.tag(episodes, tag_llm, batch_size=cfg.tag_batch, log=log)
+    moments, ep_info, tag_stats = tag_mod.tag(episodes, tag_llm, batch_size=cfg.tag_batch, log=log,
+                                              workers=cfg.workers)
     log(f"  {len(moments)} moments kept, {tag_stats['invalid_ids']} invented IDs dropped")
 
     log("Stage 3: building candidate promos")
@@ -87,7 +101,8 @@ def run(episodes: list[Episode], cfg: Config, log=print) -> dict:
         log(f"Stage 4: judging with {jl.spec} ({cfg.judge_runs} runs)")
         judge_stats[jl.spec] = {}
         per_judge[jl.spec] = judge_mod.judge(pool, episodes, jl, batch_size=cfg.judge_batch,
-                                             runs=cfg.judge_runs, log=log, stats=judge_stats[jl.spec])
+                                             runs=cfg.judge_runs, log=log, stats=judge_stats[jl.spec],
+                                             workers=cfg.workers)
         s = judge_stats[jl.spec]
         log(f"  malformed answers dropped: {s['malformed']}, failed batches: {s['failed_batches']}, "
             f"clips with no valid score: {s['missing']}")

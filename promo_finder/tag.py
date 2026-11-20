@@ -7,6 +7,7 @@ so we can report how often the model invents things.
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, asdict
 
 from .llm import LLM
@@ -82,18 +83,33 @@ def _num(x, default=0.0) -> float:
         return default
 
 
-def tag_with_llm(episodes: list[Episode], llm: LLM, batch_size: int = 3, log=print) -> tuple[list[Moment], dict, dict]:
-    """Returns (moments, per-episode info, quality stats)."""
+def tag_with_llm(episodes: list[Episode], llm: LLM, batch_size: int = 3, log=print,
+                 workers: int = 1) -> tuple[list[Moment], dict, dict]:
+    """Returns (moments, per-episode info, quality stats). workers > 1 sends batches in parallel
+    (episodes are independent), which is what makes a live demo fast on a paid API."""
     valid = {b.id: b for e in episodes for b in e.blocks}
     moments: list[Moment] = []
     info: dict[int, dict] = {}
-    stats = {"returned": 0, "invalid_ids": 0, "invalid_examples": []}
-    for i in range(0, len(episodes), batch_size):
-        batch = episodes[i:i + batch_size]
+    stats = {"returned": 0, "invalid_ids": 0, "invalid_examples": [], "failed_episodes": []}
+    batches = [episodes[i:i + batch_size] for i in range(0, len(episodes), batch_size)]
+
+    def one(batch):
         log(f"  tagging episodes {batch[0].number}-{batch[-1].number} with {llm.active_spec}")
         user = ("Tag these episodes. Return JSON in exactly this shape:\n" + TAG_SCHEMA + "\n\n"
                 + "\n\n".join(episode_prompt(e) for e in batch))
-        out = llm.json(TAG_SYSTEM, user, temperature=0.2, tag=f"{PROMPT_VERSION}_ep{batch[0].number:02d}")
+        try:
+            return llm.json(TAG_SYSTEM, user, temperature=0.2, tag=f"{PROMPT_VERSION}_ep{batch[0].number:02d}")
+        except Exception as e:                   # one bad episode must not sink the show
+            log(f"  ! tagging failed for episodes {batch[0].number}-{batch[-1].number}: {str(e)[:120]}")
+            stats["failed_episodes"] += [b.number for b in batch]
+            return {}
+
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            outs = list(pool.map(one, batches))
+    else:
+        outs = [one(b) for b in batches]
+    for out in outs:
         for ep_out in out.get("episodes", []):
             n = int(ep_out.get("episode", 0) or 0)
             tps = [t for t in ep_out.get("turning_points", []) if t in valid]
@@ -161,10 +177,10 @@ def tag_with_heuristic(episodes: list[Episode]) -> tuple[list[Moment], dict, dic
     return moments, info, {"returned": len(moments), "invalid_ids": 0, "invalid_examples": []}
 
 
-def tag(episodes: list[Episode], llm: LLM, batch_size: int = 3, log=print):
+def tag(episodes: list[Episode], llm: LLM, batch_size: int = 3, log=print, workers: int = 1):
     if llm.is_heuristic:
         return tag_with_heuristic(episodes)
-    return tag_with_llm(episodes, llm, batch_size=batch_size, log=log)
+    return tag_with_llm(episodes, llm, batch_size=batch_size, log=log, workers=workers)
 
 
 def moments_to_dicts(ms: list[Moment]) -> list[dict]:

@@ -8,6 +8,7 @@ candidate order shuffled. Big disagreement between the two runs = "uncertain".
 from __future__ import annotations
 
 import random
+from concurrent.futures import ThreadPoolExecutor
 
 from .candidates import Candidate, candidate_to_dict
 from .llm import LLM
@@ -110,7 +111,8 @@ def final_score(scores: dict) -> float:
 
 
 def judge(cands: list[Candidate], episodes: list[Episode], llm: LLM, batch_size: int = 5,
-          runs: int = 2, seed: int = 7, log=print, stats: dict | None = None) -> list[dict]:
+          runs: int = 2, seed: int = 7, log=print, stats: dict | None = None,
+          workers: int = 1) -> list[dict]:
     stats = stats if stats is not None else {}
     stats.update({"malformed": 0, "malformed_examples": [], "missing": 0, "failed_batches": 0, "single_run": 0})
     eps = {e.number: e for e in episodes}
@@ -121,22 +123,32 @@ def judge(cands: list[Candidate], episodes: list[Episode], llm: LLM, batch_size:
             j = _heuristic_judgement(c, eps)
             results[c.id] = [j, j]
     else:
+        jobs = []                                # build all batches first so shuffles stay reproducible
         for run in range(runs):
             order = list(CRITERIA)
             items = list(cands)
             if run > 0:                          # shuffle rubric and clip order on later runs
                 rng.shuffle(order)
                 rng.shuffle(items)
-            for i in range(0, len(items), batch_size):
-                b = items[i:i + batch_size]
-                log(f"  judging run {run + 1}/{runs}: clips {b[0].id}..{b[-1].id}")
-                try:
-                    out = _judge_batch(b, eps, llm, order, run)
-                except Exception as e:           # one bad batch must not sink the whole run
-                    stats["failed_batches"] += 1
-                    log(f"  ! batch failed, skipped: {str(e)[:150]}")
-                    continue
-                for cid, j in out.items():
+            jobs += [(run, order, items[i:i + batch_size]) for i in range(0, len(items), batch_size)]
+
+        def one(job):
+            run, order, b = job
+            log(f"  judging run {run + 1}/{runs}: clips {b[0].id}..{b[-1].id}")
+            try:
+                return _judge_batch(b, eps, llm, order, run)
+            except Exception as e:               # one bad batch must not sink the whole run
+                stats["failed_batches"] += 1
+                log(f"  ! batch failed, skipped: {str(e)[:150]}")
+                return {}
+
+        if workers > 1:
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                outs = list(pool.map(one, jobs))
+        else:
+            outs = [one(j) for j in jobs]
+        for out in outs:
+            for cid, j in out.items():
                     if cid not in results:
                         continue
                     if "malformed" in j:
