@@ -1,0 +1,20 @@
+# secrets
+.env
+
+# Kuku's screenplays and anything that quotes them are confidential - never commit
+data/
+*.txt
+!requirements.txt
+cache/
+outputs/
+doc/
+interview-explainer.html
+*.log
+
+# local tooling
+.claude/
+__pycache__/
+*.pyc
+.streamlit/secrets.toml
+
+.vscode/
