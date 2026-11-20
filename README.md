@@ -7,6 +7,19 @@ An editor approves the final picks.
 
 **Live app:** https://kuku-promo-finder-sp.streamlit.app (no keys stored: paste your own Groq/Gemini key in the sidebar, or pick "Keyword baseline").
 
+## For the editor (in the app)
+
+- **Post these first:** the posting plan, with reasons and what to hold back.
+- **Editor review:** approve / reject / unsure each promo, pick a reason, nudge the start or end by up to ±10s.
+  Shows the approval rate, approvals in the top 5 and top 10, and whether flagged ("editor check") and joined
+  promos get rejected more. Save as `reviews.csv` and load it again later ([review.py](promo_finder/review.py)).
+- **Hook variants:** for the top 10 promos, 2 alternative openings that end on the same cliffhanger, for A/B
+  tests. Built in code from the AI's tags, so they are marked untested ([candidates.py](promo_finder/candidates.py)).
+- **Export for editors:** a cut list (`cut_list.csv`, timecodes plus variants) and one CMX3600 EDL per promo
+  for Premiere Pro / DaVinci Resolve, using the editor's nudged cuts and optionally only approved promos
+  ([export.py](promo_finder/export.py)). Assumes one video file per episode (`episode-001.mp4`) and 30 fps (selectable).
+- **Reopen a run without AI:** upload `result.json` from an earlier run.
+
 ## Run it
 
 ```
@@ -54,6 +67,8 @@ All AI calls go through [promo_finder/llm.py](promo_finder/llm.py).
 ## Outputs (`outputs/final/`)
 
 - `posting_plan.md` / `.json`: post these first, in order, with reasons; and what to hold back
+- `cut_list.csv` and `edl/promo_NN.edl`: cut points as timecodes, ready to import into an editor
+- `result.json`: the whole run in one file, to reopen in the app without calling any AI
 - `promos.csv` / `promos.json`: all ranked promos with segments, hook, cliffhanger, why, scores per judge, editor-check flag
 - `promos.md`: readable report with each clip's script text
 - `moments.json`: every tagged moment

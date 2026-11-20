@@ -193,7 +193,41 @@ def build(episodes: list[Episode], moments: list[Moment], pool_size: int = 30,
     stats = {"hooks": len(hooks), "cliffs": len(cliffs), "raw_candidates": len(raw),
              "pool": len(pool), "episodes_covered": len(covered), "episodes_total": len(all_eps),
              "episodes_without_candidate": sorted(all_eps - covered), "rejected": rejected}
-    return pool, stats
+    return pool, stats, raw
+
+
+def hook_variants(promo: dict, raw: list[Candidate], episodes: list[Episode], k: int = 2) -> list[dict]:
+    """A/B test openings: other valid clips that end on the SAME cliffhanger but open on a
+    different hook. Prefers a different hook type, and skips openings that reuse the same footage.
+    These are built in code from the AI's tags; they are not judged, so they are labelled untested."""
+    blocks = {b.id: b for e in episodes for b in e.blocks}
+    cliff_id = promo["cliff_moment"]["id"]
+    main_hook = promo["hook_moment"]
+    first = promo["segments"][0]
+    seen_types = {main_hook["hook_type"]}
+    picked: list[Candidate] = []
+    pool = sorted((c for c in raw if c.cliff.id == cliff_id and c.hook.id != main_hook["id"]),
+                  key=lambda c: (c.hook.hook_type in seen_types, -c.hook.hook_score, -c.prescore))
+    for c in pool:
+        s0 = c.segments[0]
+        if s0.episode == first["episode"] and abs(s0.start - first["start_s"]) < 3.0:
+            continue                                  # same opening footage: not a real alternative
+        if any(abs(c.segments[0].start - p.segments[0].start) < 3.0 and
+               c.segments[0].episode == p.segments[0].episode for p in picked):
+            continue
+        picked.append(c)
+        seen_types.add(c.hook.hook_type)
+        if len(picked) >= k:
+            break
+    out = []
+    for c in picked:
+        hb = blocks[c.hook.id]
+        out.append({"kind": c.kind, "duration_s": round(c.duration, 1),
+                    "segments": [s.as_dict() for s in c.segments],
+                    "hook_type": c.hook.hook_type, "hook_score": c.hook.hook_score,
+                    "hook": (f"{hb.speaker}: \"{hb.text}\"" if hb.kind == "dialogue" else hb.text)[:160],
+                    "why": c.hook.why, "status": "untested: A/B test against the main version"})
+    return out
 
 
 def candidate_to_dict(c: Candidate) -> dict:

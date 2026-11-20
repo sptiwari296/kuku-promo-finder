@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import candidates as cand_mod
+from . import export as export_mod
 from . import judge as judge_mod
 from . import plan as plan_mod
 from . import tag as tag_mod
@@ -25,6 +26,7 @@ class Config:
     judge_batch: int = 5
     judge_runs: int = 2
     allow_stitched: bool = True
+    variants_for_top: int = 10          # how many top promos get alternative hooks
     cache_dir: str = "cache"
     api_keys: dict | None = None        # optional {provider: key} from the web app
 
@@ -75,8 +77,8 @@ def run(episodes: list[Episode], cfg: Config, log=print) -> dict:
     log(f"  {len(moments)} moments kept, {tag_stats['invalid_ids']} invented IDs dropped")
 
     log("Stage 3: building candidate promos")
-    pool, cand_stats = cand_mod.build(episodes, moments, pool_size=cfg.pool_size,
-                                      allow_stitched=cfg.allow_stitched)
+    pool, cand_stats, raw = cand_mod.build(episodes, moments, pool_size=cfg.pool_size,
+                                           allow_stitched=cfg.allow_stitched)
     log(f"  {cand_stats['raw_candidates']} possible clips -> {len(pool)} in the judging pool "
         f"(covers {cand_stats['episodes_covered']}/{cand_stats['episodes_total']} episodes)")
 
@@ -97,6 +99,12 @@ def run(episodes: list[Episode], cfg: Config, log=print) -> dict:
     log(f"Stage 5: {len(ranked)} promos ranked; rule checks passed {checks['passed']}/{checks['checked']}")
 
     plan = plan_mod.posting_plan(ranked, judge_llms[0], log=log)
+
+    n_var = 0
+    for p in ranked[:cfg.variants_for_top]:
+        p["hook_variants"] = cand_mod.hook_variants(p, raw, episodes, k=2)
+        n_var += len(p["hook_variants"])
+    log(f"Stage 7: {n_var} alternative hooks for A/B tests on the top {cfg.variants_for_top} promos")
 
     return {
         "promos": ranked,
@@ -120,6 +128,14 @@ def write_outputs(result: dict, out_dir: str | Path) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     promos = result["promos"]
     (out / "promos.json").write_text(json.dumps(promos, indent=1, ensure_ascii=False), encoding="utf-8")
+    # everything in one file, so the web app can reopen a run without calling any AI
+    (out / "result.json").write_text(json.dumps(result, ensure_ascii=False), encoding="utf-8")
+    # cut list + one EDL per promo, ready to import into an editor
+    (out / "cut_list.csv").write_text(export_mod.cutlist_csv(promos), encoding="utf-8")
+    edl_dir = out / "edl"
+    edl_dir.mkdir(exist_ok=True)
+    for p in promos:
+        (edl_dir / f"promo_{p['rank']:02d}.edl").write_text(export_mod.edl(p), encoding="utf-8")
     (out / "moments.json").write_text(json.dumps({"episode_info": result["episode_info"],
                                                   "moments": result["moments"]}, indent=1, ensure_ascii=False),
                                       encoding="utf-8")

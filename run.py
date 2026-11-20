@@ -42,7 +42,8 @@ def main():
     result = run(eps, cfg)
     out = a.out or f"outputs/{safe_name(a.tag_model)}__{safe_name(a.judge_model)}"
     path = write_outputs(result, out)
-    print(f"\nWrote {path / 'promos.csv'}, promos.json, promos.md, moments.json, run_log.json")
+    print(f"\nWrote {path}: posting_plan.md, promos.csv/json/md, cut_list.csv, edl/, result.json, "
+          f"moments.json, run_log.json")
     for p in result["promos"][:5]:
         segs = " + ".join(f"Ep{s['episode']} {s['start']}-{s['end']}" for s in p["segments"])
         print(f"#{p['rank']} {segs} ({p['duration_s']}s) score {p['score']}  hook: {p['hook'][:70]}")
