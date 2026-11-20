@@ -177,10 +177,43 @@ def tag_with_heuristic(episodes: list[Episode]) -> tuple[list[Moment], dict, dic
     return moments, info, {"returned": len(moments), "invalid_ids": 0, "invalid_examples": []}
 
 
-def tag(episodes: list[Episode], llm: LLM, batch_size: int = 3, log=print, workers: int = 1):
+LAST_BEAT_SCORE = 7.0   # a floor, not a verdict: the judges still score the clip
+
+
+def add_last_beats(episodes: list[Episode], moments: list[Moment]) -> int:
+    """Rule in code: every episode's last story beat counts as a cliffhanger.
+    Microdrama writers end each episode on the reason to watch the next one, so we don't
+    leave that to the AI noticing it (the no-hint test showed the AI partly relied on the
+    script saying "cliffhanger"). Returns how many moments were added or upgraded."""
+    changed = 0
+    for ep in episodes:
+        beats = [b for b in ep.blocks if b.kind in ("dialogue", "action")]
+        if not beats:
+            continue
+        last = beats[-1]
+        mine = [m for m in moments if m.id == last.id]
+        if mine:
+            for m in mine:
+                if m.cliff_score < LAST_BEAT_SCORE or m.role == "hook":
+                    m.cliff_score = max(m.cliff_score, LAST_BEAT_SCORE)
+                    m.role = "both" if m.role == "hook" else m.role
+                    changed += 1
+            continue
+        moments.append(Moment(id=last.id, episode=ep.number, role="cliffhanger", hook_type="other",
+                              hook_score=0.0, cliff_score=LAST_BEAT_SCORE, intensity=5.0, needs_context=5.0,
+                              why="episode's last beat (code rule)", source="rule:last-beat"))
+        changed += 1
+    return changed
+
+
+def tag(episodes: list[Episode], llm: LLM, batch_size: int = 3, log=print, workers: int = 1,
+        last_beat_rule: bool = True):
     if llm.is_heuristic:
         return tag_with_heuristic(episodes)
-    return tag_with_llm(episodes, llm, batch_size=batch_size, log=log, workers=workers)
+    moments, info, stats = tag_with_llm(episodes, llm, batch_size=batch_size, log=log, workers=workers)
+    if last_beat_rule:
+        stats["last_beat_rule_added"] = add_last_beats(episodes, moments)
+    return moments, info, stats
 
 
 def moments_to_dicts(ms: list[Moment]) -> list[dict]:

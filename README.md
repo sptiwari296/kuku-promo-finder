@@ -111,7 +111,14 @@ literally say "cliffhanger", always at an episode's end. Removing the word and r
 
 The tagger does lean on the label; the final promos barely change because the judges read the whole clip.
 Control: only ~35% of hook moments repeat between runs anyway, so part of this is normal AI variation.
-Next fix: a code rule that always treats each episode's last beat as a cliffhanger.
+**Fix (built):** a code rule now treats each episode's last beat as a cliffhanger candidate
+([tag.py](promo_finder/tag.py) `add_last_beats`, on by default, `--no-last-beat` to turn off). Re-test
+([outputs/experiments/no_hint_rule]): the ending is found 14/14 with or without the word, the judges' cliffhanger
+score for the top 10 did not drop (8.0 without the word), and cliffhanger moments now change less between runs
+(Jaccard 0.42) than the hook control (0.35). A full 50-episode re-run with the rule (`outputs/final_v2`): 60/60 rule
+checks, 49/50 episodes, judge rank correlation 0.58 (was 0.53), 40 episode endings added; the posting plan still
+opens with Ep1, then Ep2+3, and holds back the same spoiler scenes. `outputs/final` (without the rule) stays the
+main submitted run.
 
 **What does the AI add over keyword rules?** ([ai_vs_baseline.py](experiments/ai_vs_baseline.py)) Top 10 of each,
 mixed and blind-scored by a model that took no part in ranking (Qwen `qwen3.8-27b`):

@@ -31,6 +31,7 @@ def main():
                     help="demo mode: 20-clip shortlist, one judge, one pass, 4 parallel calls")
     ap.add_argument("--workers", type=int, default=0, help="parallel AI calls (default 1, or 4 with --fast)")
     ap.add_argument("--no-stitched", action="store_true", help="only single continuous clips")
+    ap.add_argument("--no-last-beat", action="store_true", help="turn off the rule that every episode's last beat is a cliffhanger")
     ap.add_argument("--out", default="", help="output folder (default outputs/<tag>__<judge>)")
     a = ap.parse_args()
 
@@ -41,7 +42,7 @@ def main():
     if not eps:
         raise SystemExit(f"No episodes found in {a.input}")
     cfg = Config(tag_model=a.tag_model, judge_model=a.judge_model, pool_size=a.pool, tag_batch=a.tag_batch,
-                 allow_stitched=not a.no_stitched)
+                 allow_stitched=not a.no_stitched, last_beat_rule=not a.no_last_beat)
     if a.fast:
         cfg = fast(cfg)
     if a.workers:

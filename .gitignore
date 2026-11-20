@@ -18,3 +18,6 @@ __pycache__/
 .streamlit/secrets.toml
 
 .vscode/
+
+# raw outputs bundle (Kuku content, never commit)
+*.zip

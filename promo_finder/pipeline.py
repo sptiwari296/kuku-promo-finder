@@ -28,6 +28,7 @@ class Config:
     allow_stitched: bool = True
     variants_for_top: int = 10          # how many top promos get alternative hooks
     workers: int = 1                    # parallel AI calls (raise on paid APIs)
+    last_beat_rule: bool = True         # every episode's last beat counts as a cliffhanger (code rule)
     cache_dir: str = "cache"
     api_keys: dict | None = None        # optional {provider: key} from the web app
 
@@ -87,8 +88,9 @@ def run(episodes: list[Episode], cfg: Config, log=print) -> dict:
 
     log(f"Stage 2: tagging with {cfg.tag_model}")
     moments, ep_info, tag_stats = tag_mod.tag(episodes, tag_llm, batch_size=cfg.tag_batch, log=log,
-                                              workers=cfg.workers)
-    log(f"  {len(moments)} moments kept, {tag_stats['invalid_ids']} invented IDs dropped")
+                                              workers=cfg.workers, last_beat_rule=cfg.last_beat_rule)
+    log(f"  {len(moments)} moments kept, {tag_stats['invalid_ids']} invented IDs dropped, "
+        f"{tag_stats.get('last_beat_rule_added', 0)} episode endings added by the last-beat rule")
 
     log("Stage 3: building candidate promos")
     pool, cand_stats, raw = cand_mod.build(episodes, moments, pool_size=cfg.pool_size,
